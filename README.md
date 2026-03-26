@@ -201,6 +201,13 @@ cat > omni-provider-policy.json <<'EOF'
           "ec2:ResourceTag/omni-request-id": "*"
         }
       }
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "iam:PassRole"
+      ],
+      "Resource": "*"
     }
   ]
 }
@@ -397,7 +404,57 @@ This will create a cluster named "aws" with 1 control plane node and 3 worker no
 | `security_group_ids` | array | Conditional* | Security group IDs |
 | `volume_size` | integer | No | Root volume size in GB (default: 8) |
 | `arch` | string | No | Architecture: `amd64` or `arm64` (default: amd64) |
+| `iam_instance_profile` | string | No | IAM Instance Profile name to attach to the instance |
 
+
+### IAM Instance Profile
+
+To attach an IAM role to provisioned EC2 instances, create an instance profile and reference it in the machine class configuration.
+
+```bash
+# Create a role with the desired permissions for your workloads
+cat > node-trust-policy.json <<'EOF'
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "ec2.amazonaws.com"
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
+EOF
+
+aws iam create-role \
+  --role-name OmniNodeRole \
+  --assume-role-policy-document file://node-trust-policy.json
+
+# Attach policies to the role (example: ECR read access)
+aws iam attach-role-policy \
+  --role-name OmniNodeRole \
+  --policy-arn arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+
+# Create an instance profile and attach the role
+aws iam create-instance-profile \
+  --instance-profile-name OmniNodeProfile
+
+aws iam add-role-to-instance-profile \
+  --instance-profile-name OmniNodeProfile \
+  --role-name OmniNodeRole
+
+rm node-trust-policy.json
+```
+
+Then include `iam_instance_profile` in your machine class `providerdata`:
+
+```json
+{"instance_type":"t3.medium","iam_instance_profile":"OmniNodeProfile","subnet_ids":["subnet-xxx"],"security_group_ids":["sg-xxx"]}
+```
+
+**Note:** The provider's own IAM identity must have the `iam:PassRole` permission for the role attached to the instance profile.
 
 ## Cleanup
 
