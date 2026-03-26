@@ -1,7 +1,7 @@
 # Multi-stage build for omni-infra-provider-aws
 
 # Build stage
-FROM golang:1.23-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 # Install build dependencies
 RUN apk add --no-cache git ca-certificates tzdata
@@ -20,9 +20,9 @@ COPY . .
 
 # Build the binary
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
-    -ldflags="-w -s" \
-    -o omni-infra-provider-aws \
-    ./cmd/omni-infra-provider-aws
+  -ldflags="-w -s" \
+  -o omni-infra-provider-aws \
+  ./cmd/omni-infra-provider-aws
 
 # Runtime stage
 FROM alpine:latest
@@ -32,7 +32,7 @@ RUN apk --no-cache add ca-certificates tzdata
 
 # Create non-root user
 RUN addgroup -g 1000 omni && \
-    adduser -D -u 1000 -G omni omni
+  adduser -D -u 1000 -G omni omni
 
 WORKDIR /app
 

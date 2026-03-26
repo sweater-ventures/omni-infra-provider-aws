@@ -9,9 +9,10 @@ type Data struct {
 	InstanceType     string   `yaml:"instance_type"`
 	SubnetID         string   `yaml:"subnet_id,omitempty"`          // Single subnet (backward compatible)
 	SubnetIDs        []string `yaml:"subnet_ids,omitempty"`         // Multiple subnets (for HA across AZs)
-	SecurityGroupIDs []string `yaml:"security_group_ids,omitempty"`
-	VolumeSize       int64    `yaml:"volume_size,omitempty"`
-	Arch             string   `yaml:"arch,omitempty"` // Default to amd64
+	SecurityGroupIDs   []string `yaml:"security_group_ids,omitempty"`
+	VolumeSize         int64    `yaml:"volume_size,omitempty"`
+	Arch               string   `yaml:"arch,omitempty"` // Default to amd64
+	IamInstanceProfile string   `yaml:"iam_instance_profile,omitempty"`
 }
 
 // GetSubnetID returns a subnet ID, using hash-based selection for even distribution across AZs

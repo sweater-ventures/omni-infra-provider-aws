@@ -106,7 +106,12 @@ func (p *Provisioner) ProvisionSteps() []provision.Step[*resources.Machine] {
 			if len(data.SecurityGroupIDs) > 0 {
 				input.SecurityGroupIds = data.SecurityGroupIDs
 			}
-			if data.VolumeSize > 0 {
+			if data.IamInstanceProfile != "" {
+			input.IamInstanceProfile = &types.IamInstanceProfileSpecification{
+				Name: aws.String(data.IamInstanceProfile),
+			}
+		}
+		if data.VolumeSize > 0 {
 				input.BlockDeviceMappings = []types.BlockDeviceMapping{
 					{
 						DeviceName: aws.String("/dev/xvda"),

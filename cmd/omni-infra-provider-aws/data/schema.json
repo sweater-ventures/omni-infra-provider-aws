@@ -33,6 +33,10 @@
       "enum": ["amd64", "arm64"],
       "default": "amd64",
       "description": "CPU Architecture"
+    },
+    "iam_instance_profile": {
+      "type": "string",
+      "description": "IAM Instance Profile name to attach to the EC2 instance"
     }
   },
   "required": [
