@@ -190,7 +190,33 @@ func (p *Provisioner) Deprovision(ctx context.Context, logger *zap.Logger, machi
 		return nil
 	}
 
-	_, err := p.ec2Client.TerminateInstances(ctx, &ec2.TerminateInstancesInput{
+	// Probe the instance first: the IAM policy gates TerminateInstances on the
+	// omni-request-id tag, and AWS cannot evaluate that tag against a
+	// non-existent instance — it returns UnauthorizedOperation instead of
+	// InvalidInstanceID.NotFound, which masks the real "already gone" state.
+	describeOut, err := p.ec2Client.DescribeInstances(ctx, &ec2.DescribeInstancesInput{
+		InstanceIds: []string{instanceID},
+	})
+	if err != nil {
+		if isInstanceNotFound(err) {
+			logger.Warn("instance already terminated or does not exist", zap.String("instance-id", instanceID))
+			return nil
+		}
+
+		return err
+	}
+
+	if len(describeOut.Reservations) == 0 || len(describeOut.Reservations[0].Instances) == 0 {
+		logger.Warn("instance already terminated or does not exist", zap.String("instance-id", instanceID))
+		return nil
+	}
+
+	if state := describeOut.Reservations[0].Instances[0].State; state != nil && state.Name == types.InstanceStateNameTerminated {
+		logger.Info("instance already in terminated state", zap.String("instance-id", instanceID))
+		return nil
+	}
+
+	_, err = p.ec2Client.TerminateInstances(ctx, &ec2.TerminateInstancesInput{
 		InstanceIds: []string{instanceID},
 	})
 	if err != nil {
