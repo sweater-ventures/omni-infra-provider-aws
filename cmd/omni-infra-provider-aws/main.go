@@ -9,15 +9,18 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/feature/ec2/imds"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/siderolabs/omni/client/pkg/client"
+	"github.com/siderolabs/omni/client/pkg/client/omni"
 	"github.com/siderolabs/omni/client/pkg/infra"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/siderolabs/omni-infra-provider-aws/internal/pkg/provider"
 	"github.com/siderolabs/omni-infra-provider-aws/internal/pkg/provider/meta"
@@ -124,21 +127,64 @@ var rootCmd = &cobra.Command{
 			}
 		}
 
-		return ip.Run(ctx, logger, infra.WithOmniEndpoint(cfg.omniAPIEndpoint), infra.WithClientOptions(
-			clientOptions...,
-		), infra.WithEncodeRequestIDsIntoTokens())
+		clientOptions = append(clientOptions, client.WithOmniClientOptions(omni.WithProviderID(meta.ProviderID)))
+
+		omniClient, err := client.New(cfg.omniAPIEndpoint, clientOptions...)
+		if err != nil {
+			return fmt.Errorf("failed to create Omni client: %w", err)
+		}
+		defer omniClient.Close() //nolint:errcheck
+
+		infraState, err := infra.NewState(omniClient)
+		if err != nil {
+			return fmt.Errorf("failed to create Omni state: %w", err)
+		}
+
+		g, ctx := errgroup.WithContext(ctx)
+
+		if cfg.orphanSweepInterval > 0 {
+			if cfg.orphanSweepGrace <= 0 {
+				return fmt.Errorf("orphan-sweep-grace-period must be > 0 when orphan sweeping is enabled")
+			}
+			if cfg.orphanSweepMaxDeletes < 1 {
+				return fmt.Errorf("orphan-sweep-max-deletes must be >= 1 when orphan sweeping is enabled")
+			}
+
+			sweeper := provider.NewOrphanSweeper(provider.OrphanSweeperConfig{
+				EC2:        ec2Client,
+				State:      infraState.State(),
+				Logger:     logger,
+				ProviderID: meta.ProviderID,
+				Interval:   cfg.orphanSweepInterval,
+				Grace:      cfg.orphanSweepGrace,
+				MaxDeletes: cfg.orphanSweepMaxDeletes,
+			})
+			provisioner.SetOnProvisionRequest(func() {
+				sweeper.Reset("omni requested machine creation")
+			})
+			g.Go(func() error { return sweeper.Run(ctx) })
+		}
+
+		g.Go(func() error {
+			return ip.Run(ctx, logger, infra.WithState(infraState.State()), infra.WithEncodeRequestIDsIntoTokens())
+		})
+
+		return g.Wait()
 	},
 }
 
 var cfg struct {
-	omniAPIEndpoint     string
-	serviceAccountKey   string
-	serviceAccountFile  string
-	providerName        string
-	providerDescription string
-	awsRegion           string
-	awsProfile          string
-	insecureSkipVerify  bool
+	omniAPIEndpoint       string
+	serviceAccountKey     string
+	serviceAccountFile    string
+	providerName          string
+	providerDescription   string
+	awsRegion             string
+	awsProfile            string
+	orphanSweepInterval   time.Duration
+	orphanSweepGrace      time.Duration
+	orphanSweepMaxDeletes int
+	insecureSkipVerify    bool
 }
 
 func main() {
@@ -169,4 +215,10 @@ func init() {
 	rootCmd.Flags().StringVar(&cfg.awsProfile, "aws-profile", os.Getenv("AWS_PROFILE"),
 		"AWS profile (defaults to AWS_PROFILE env var)")
 	rootCmd.Flags().BoolVar(&cfg.insecureSkipVerify, "insecure-skip-verify", false, "ignores untrusted certs on Omni side")
+	rootCmd.Flags().DurationVar(&cfg.orphanSweepInterval, "orphan-sweep-interval", provider.DefaultOrphanSweepInterval,
+		"how often to look for EC2 instances this provider created that Omni does not track (0 disables)")
+	rootCmd.Flags().DurationVar(&cfg.orphanSweepGrace, "orphan-sweep-grace-period", provider.DefaultOrphanSweepGrace,
+		"how long Omni must successfully report an instance as unknown, across consecutive sweeps, before it is terminated. Omni or EC2 errors reset this timer")
+	rootCmd.Flags().IntVar(&cfg.orphanSweepMaxDeletes, "orphan-sweep-max-deletes", provider.DefaultOrphanSweepMaxDeletes,
+		"maximum number of orphan instances to terminate in a single sweep")
 }

@@ -12,6 +12,7 @@ require (
 	github.com/siderolabs/omni/client v1.7.0
 	github.com/spf13/cobra v1.10.2
 	go.uber.org/zap v1.27.1
+	golang.org/x/sync v0.20.0
 	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af
 )
 
@@ -107,7 +108,6 @@ require (
 	golang.org/x/exp v0.0.0-20260312153236-7ab1446f8b90 // indirect
 	golang.org/x/net v0.52.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
-	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.42.0 // indirect
 	golang.org/x/term v0.41.0 // indirect
 	golang.org/x/text v0.35.0 // indirect
